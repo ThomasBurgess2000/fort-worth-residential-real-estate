@@ -1,0 +1,41 @@
+# Go related builds and artifacts
+# --------------------------------
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binaries built with `go test -c`
+*.test
+
+# Output of the Go coverage tool
+*.out
+coverage.out
+
+# Object files & static libs
+*.o
+*.a
+
+# Go workspace file (go 1.18+)
+go.work
+
+# Editor & IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Logs
+*.log
+
+# ----------------------------------------------------------------------------
+# Project-specific ignores
+# ----------------------------------------------------------------------------
+# Large input data files that should not be committed
+# You can fetch/regenerate these locally when needed.
+data/
+
+# Uncomment the following line **only** if you do NOT want to vendor deps
+# vendor/
