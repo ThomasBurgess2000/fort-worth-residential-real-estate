@@ -345,9 +345,12 @@ func renderPropertyDiff(cur Property, prev Property) {
 	if ok && len(zoningFeatures) > 0 {
 		latFt, lonFt := wgs84ToTxNC(latDeg, lonDeg)
 		if attrs, found := findZoningAttributes(latFt, lonFt); found {
-			fmt.Println("Zoning Attributes :")
-			for k, v := range attrs {
-				fmt.Printf("  %-20s %s\n", k, v)
+			if z, ok := attrs["ZONING"]; ok && strings.TrimSpace(z) != "" {
+				fmt.Printf("Zoning            : %s\n", strings.TrimSpace(z))
+			} else if z, ok := attrs["BASE_ZONIN"]; ok && strings.TrimSpace(z) != "" {
+				fmt.Printf("Zoning            : %s\n", strings.TrimSpace(z))
+			} else {
+				fmt.Println("Zoning attributes found but zoning code missing")
 			}
 		} else {
 			fmt.Println("No zoning attributes found")

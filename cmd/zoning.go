@@ -22,15 +22,26 @@ type zoningFeature struct {
 // Global slice containing all zoning polygons loaded at program start.
 var zoningFeatures []zoningFeature
 
-// initZoning loads the ADM_ZONING shapefile into memory. This should be called
-// once from main after datasets are loaded.
+// initZoning loads the base zoning layer and any supplemental layers (e.g.
+// overlay districts, PDs).  Add additional shapefile directories in the list
+// below and they will all be searched.
 func initZoning() error {
-	shpPath := filepath.Join("data", "ADM_ZONING", "ADM_ZONING.shp")
-	feats, err := loadZoningShapefile(shpPath)
-	if err != nil {
-		return fmt.Errorf("load zoning shapefile: %w", err)
+	layers := []struct {
+		dir  string
+		file string
+	}{
+		{"ADM_ZONING", "ADM_ZONING.shp"},
+		{"ADM_ZONING_OVERLAY_DISTRICTS", "ADM_ZONING_OVERLAY_DISTRICTS.shp"},
 	}
-	zoningFeatures = feats
+
+	for _, l := range layers {
+		shpPath := filepath.Join("data", l.dir, l.file)
+		feats, err := loadZoningShapefile(shpPath)
+		if err != nil {
+			return fmt.Errorf("load zoning shapefile %s: %w", shpPath, err)
+		}
+		zoningFeatures = append(zoningFeatures, feats...)
+	}
 	return nil
 }
 

@@ -1,8 +1,8 @@
 package main
 
-// WGS-84 → Texas North-Central (EPSG:2276) Lambert Conformal Conic, US-feet.
-// The shapefile polygons are already in this CRS (see ADM_ZONING.prj).
-// We convert parcel lat/lon for point-in-polygon testing.
+// WGS-84 → Texas North-Central (EPSG:2276) Lambert Conformal Conic in US-survey feet.
+// Matches the parameters in ADM_ZONING.prj exactly, but implemented in pure Go – no CGO.
+// Formula follows EPSG guidance for LCC two-standard-parallel with e≠0.
 
 import "math"
 
@@ -16,6 +16,7 @@ const (
 
 	ftPerMeter = 3.2808333333333334 // US survey foot
 	semiMajorM = 6378137.0          // NAD83 semi-major axis (metres)
+	e2         = 0.00669438002290   // NAD83 eccentricity squared
 )
 
 var (
@@ -49,8 +50,8 @@ func init() {
 	n = math.Log(m1/m2) / math.Log(t1/t2)
 
 	aFt := semiMajorM * ftPerMeter
-	F = aFt * m1 / (n * math.Pow(t1, n))
-	rho0 = F * math.Pow(t0, n)
+	F = m1 / (n * math.Pow(t1, n))
+	rho0 = aFt * F * math.Pow(t0, n)
 }
 
 // wgs84ToTxNC converts latitude/longitude in decimal degrees (WGS-84) to
@@ -61,8 +62,9 @@ func wgs84ToTxNC(latDeg, lonDeg float64) (northingFt, eastingFt float64) {
 	lambda := lonDeg * math.Pi / 180
 	lambda0 := lon0Deg * math.Pi / 180
 
-	t := math.Tan(math.Pi/4 - phi/2)
-	rho := F * math.Pow(t, n)
+	e := math.Sqrt(e2)
+	t := math.Tan(math.Pi/4-phi/2) / math.Pow((1-e*math.Sin(phi))/(1+e*math.Sin(phi)), e/2)
+	rho := semiMajorM * ftPerMeter * F * math.Pow(t, n)
 	theta := n * (lambda - lambda0)
 
 	xFt := rho*math.Sin(theta) + spFalseEasting
