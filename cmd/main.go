@@ -6,8 +6,10 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -171,6 +173,7 @@ func lookupAndRender(address string, props2025 map[string]Property, props2024 ma
 func loadDatasets() (map[string]Property, map[string]Property, error) {
 	// First read primary file into map keyed by account number.
 	primaryByAcct := make(map[string]Property)
+	var muPrimary sync.Mutex
 	if err := readFile(primaryFile, func(record map[string]string) {
 		acct := record["Account_Num"]
 		prop := Property{
@@ -202,7 +205,9 @@ func loadDatasets() (map[string]Property, map[string]Property, error) {
 			LandAcres: record["Land_Acres"],
 			LandSqFt:  record["Land_SqFt"],
 		}
+		muPrimary.Lock()
 		primaryByAcct[acct] = prop
+		muPrimary.Unlock()
 	}); err != nil {
 		return nil, nil, err
 	}
@@ -210,8 +215,10 @@ func loadDatasets() (map[string]Property, map[string]Property, error) {
 	// Now read supplemental file and merge.
 	if err := readFile(supplementalFile, func(record map[string]string) {
 		acct := record["AccountNumber"]
+		muPrimary.Lock()
 		prop, ok := primaryByAcct[acct]
 		if !ok {
+			muPrimary.Unlock()
 			// Only merge if we already have the base record.
 			return
 		}
@@ -228,6 +235,7 @@ func loadDatasets() (map[string]Property, map[string]Property, error) {
 		prop.SiteClassDescr = record["SiteClassDescr"]
 		prop.LandUseCode = record["LandUseCode"]
 		primaryByAcct[acct] = prop
+		muPrimary.Unlock()
 	}); err != nil {
 		return nil, nil, err
 	}
@@ -240,6 +248,7 @@ func loadDatasets() (map[string]Property, map[string]Property, error) {
 	}
 	// Now load 2024 primary dataset and build address map.
 	primary2024ByAcct := make(map[string]Property)
+	var mu2024 sync.Mutex
 	if err := readFile(primary2024File, func(record map[string]string) {
 		acct := record["Account_Num"]
 		prop := Property{
@@ -267,7 +276,9 @@ func loadDatasets() (map[string]Property, map[string]Property, error) {
 			LandAcres:        record["Land_Acres"],
 			LandSqFt:         record["Land_SqFt"],
 		}
+		mu2024.Lock()
 		primary2024ByAcct[acct] = prop
+		mu2024.Unlock()
 	}); err != nil {
 		return nil, nil, err
 	}
@@ -291,22 +302,41 @@ func readFile(path string, fn func(record map[string]string)) error {
 
 	scanner := bufio.NewScanner(f)
 	scanner.Buffer(make([]byte, 0, 1024*1024), 1024*1024) // allow very long lines
+
+	// Read header row
 	if !scanner.Scan() {
 		return fmt.Errorf("file %s is empty", path)
 	}
 	header := strings.Split(scanner.Text(), "|")
 
-	for scanner.Scan() {
-		line := scanner.Text()
-		cols := strings.Split(line, "|")
-		rec := make(map[string]string, len(header))
-		for i, h := range header {
-			if i < len(cols) {
-				rec[h] = strings.TrimSpace(cols[i])
+	// Pipeline: producer (I/O) -> workers (CPU-bound parsing)
+	linesCh := make(chan string, 4096)
+
+	workers := runtime.NumCPU()
+	var wg sync.WaitGroup
+	wg.Add(workers)
+	for i := 0; i < workers; i++ {
+		go func() {
+			defer wg.Done()
+			for line := range linesCh {
+				cols := strings.Split(line, "|")
+				rec := make(map[string]string, len(header))
+				for j, h := range header {
+					if j < len(cols) {
+						rec[h] = strings.TrimSpace(cols[j])
+					}
+				}
+				fn(rec)
 			}
-		}
-		fn(rec)
+		}()
 	}
+
+	for scanner.Scan() {
+		linesCh <- scanner.Text()
+	}
+	close(linesCh)
+	wg.Wait()
+
 	return scanner.Err()
 }
 
