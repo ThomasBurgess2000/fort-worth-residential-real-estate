@@ -41,7 +41,7 @@ func handleSubdivisionQuery(sub string, props2025 map[string]Property, props2024
 				fmt.Println(line)
 			}
 			fmt.Println("Use ↑/↓ and Enter for details, Esc to exit.")
-			interactiveSelect(addrs, lines, props2025, props2024)
+			interactiveSelect(addrs, lines, props2025, props2024, true)
 			return
 		}
 		if choice == "2" {
@@ -61,7 +61,7 @@ func handleSubdivisionQuery(sub string, props2025 map[string]Property, props2024
 				fmt.Println(line)
 			}
 			fmt.Println("Use ↑/↓ and Enter for details, Esc to exit.")
-			interactiveSelect(addrs, lines, props2025, props2024)
+			interactiveSelect(addrs, lines, props2025, props2024, true)
 			return
 		}
 		if choice == "3" {
@@ -77,7 +77,7 @@ func handleSubdivisionQuery(sub string, props2025 map[string]Property, props2024
 				fmt.Println(line)
 			}
 			fmt.Println("Use ↑/↓ and Enter for details, Esc to exit.")
-			interactiveSelect(addrs, lines, props2025, props2024)
+			interactiveSelect(addrs, lines, props2025, props2024, true)
 			return
 		}
 		fmt.Println("Invalid choice – enter 1, 2, or 3.")

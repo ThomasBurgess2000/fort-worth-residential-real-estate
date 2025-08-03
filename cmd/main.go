@@ -95,50 +95,76 @@ func main() {
 		}
 		// Otherwise treat the argument(s) as an address lookup.
 		address := strings.Join(os.Args[1:], " ")
-		lookupAndRender(address, props2025, props2024)
+		lookupAndRender(address, props2025, props2024, true)
 		return
 	}
 
 	// Interactive loop for multiple lookups.
 	reader := bufio.NewReader(os.Stdin)
 	for {
-		fmt.Print("Enter address or sub=<Subdivision> (blank to quit): ")
+		fmt.Print("Enter address, sub=<Subdivision>, or 'leads' (blank to quit): ")
 		input, _ := reader.ReadString('\n')
 		addrInput := strings.TrimSpace(input)
 		if addrInput == "" {
 			break
 		}
+		// Special command: show leads list
+		if strings.EqualFold(addrInput, "leads") {
+			showLeads(props2025, props2024)
+			continue
+		}
+
+		// Subdivision query
 		if strings.HasPrefix(addrInput, "sub=") || strings.HasPrefix(addrInput, "sub:") {
 			sub := strings.TrimPrefix(strings.TrimPrefix(addrInput, "sub="), "sub:")
 			handleSubdivisionQuery(sub, props2025, props2024)
 			continue
 		}
-		lookupAndRender(addrInput, props2025, props2024)
+
+		// Default: treat input as an address search
+		lookupAndRender(addrInput, props2025, props2024, true)
 	}
 }
 
 // lookupAndRender searches the 2025 and 2024 maps for the given address and displays the result.
-func lookupAndRender(address string, props2025 map[string]Property, props2024 map[string]Property) {
+func lookupAndRender(address string, props2025 map[string]Property, props2024 map[string]Property, askSave bool) {
 	norm := normalize(address)
 	prop2025, ok2025 := props2025[norm]
 	prop2024, ok2024 := props2024[norm]
 
+	// selProp points to the Property we ultimately displayed (2025 preferred, else 2024).
+	var selProp *Property
+
 	if ok2025 {
+		selProp = &prop2025
 		if ok2024 {
 			renderPropertyDiff(prop2025, prop2024)
 		} else {
 			renderPropertyDiff(prop2025, Property{})
 		}
-		return
-	}
-
-	if ok2024 {
+	} else if ok2024 {
+		selProp = &prop2024
 		fmt.Println("[Note] No 2025 record found; displaying 2024 data")
 		renderPropertyDiff(prop2024, Property{})
+	} else {
+		fmt.Printf("No property found for address: %s\n", address)
 		return
 	}
 
-	fmt.Printf("No property found for address: %s\n", address)
+	if askSave {
+		// Offer to save the property as a lead.
+		reader := bufio.NewReader(os.Stdin)
+		fmt.Print("Save to leads? (y/N): ")
+		resp, _ := reader.ReadString('\n')
+		resp = strings.ToLower(strings.TrimSpace(resp))
+		if resp == "y" || resp == "yes" {
+			if err := saveLead(selProp.SitusAddress); err != nil {
+				fmt.Printf("Failed to save lead: %v\n", err)
+			} else {
+				fmt.Println("Lead saved.")
+			}
+		}
+	}
 }
 
 // loadDatasets reads both data files, merges them by Account Number, and returns a map keyed by normalized address.
