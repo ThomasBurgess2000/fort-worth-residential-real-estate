@@ -160,7 +160,7 @@ func lookupAndRender(address string, props2025 map[string]Property, props2024 ma
 		resp, _ := reader.ReadString('\n')
 		resp = strings.ToLower(strings.TrimSpace(resp))
 		if resp == "y" || resp == "yes" {
-			if err := saveLead(selProp.SitusAddress); err != nil {
+			if err := saveLead(*selProp); err != nil {
 				fmt.Printf("Failed to save lead: %v\n", err)
 			} else {
 				fmt.Println("Lead saved.")
