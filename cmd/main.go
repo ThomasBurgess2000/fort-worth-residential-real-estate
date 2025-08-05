@@ -90,6 +90,11 @@ func main() {
 	// If the user provided an argument on the command line, decide whether it's a zip or an address.
 	if len(os.Args) > 1 {
 		arg := os.Args[1]
+		// Special command: list large rural parcels (>10 acres & >10mi from downtown)
+		if strings.EqualFold(arg, "bigland") {
+			showLargeLandInteractive(props2025, props2024)
+			return
+		}
 		if strings.HasPrefix(arg, "sub=") || strings.HasPrefix(arg, "sub:") {
 			sub := strings.TrimPrefix(strings.TrimPrefix(arg, "sub="), "sub:")
 			handleSubdivisionQuery(sub, props2025, props2024)
@@ -104,7 +109,7 @@ func main() {
 	// Interactive loop for multiple lookups.
 	reader := bufio.NewReader(os.Stdin)
 	for {
-		fmt.Print("Enter address, sub=<Subdivision>, or 'leads' (blank to quit): ")
+		fmt.Print("Enter address, sub=<Subdivision>, 'leads', or 'bigland' (blank to quit): ")
 		input, _ := reader.ReadString('\n')
 		addrInput := strings.TrimSpace(input)
 		if addrInput == "" {
@@ -113,6 +118,11 @@ func main() {
 		// Special command: show leads list
 		if strings.EqualFold(addrInput, "leads") {
 			showLeads(props2025, props2024)
+			continue
+		}
+		// Special command: list large rural parcels (>10 acres & >10mi from downtown)
+		if strings.EqualFold(addrInput, "bigland") {
+			showLargeLandInteractive(props2025, props2024)
 			continue
 		}
 
