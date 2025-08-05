@@ -168,10 +168,18 @@ func createLeadDetailFile(prop Property) error {
 	fmt.Fprintln(&b, "- Email: ")
 	fmt.Fprintf(&b, "- Last Sale Date: %s\n", prop.LastSaleDate)
 
-	fmt.Fprintln(&b, "## Property Info")
+	// ---------------------- Value Info ----------------------
+	fmt.Fprintln(&b, "## Value Info")
 	fmt.Fprintf(&b, "- Total Value: %s\n", prop.TotalValue)
 	fmt.Fprintf(&b, "\t- Improvement: %s\n", prop.ImprovementValue)
 	fmt.Fprintf(&b, "\t- Land: %s\n", prop.LandValue)
+	fmt.Fprintln(&b, "- Redfin: ")
+	fmt.Fprintln(&b, "- Zillow: ")
+
+	// -------------------- Property Info ------------------
+	fmt.Fprintln(&b, "## Property Info:")
+	fmt.Fprintf(&b, "- Condition: %s\n", prop.Condition)
+	fmt.Fprintf(&b, "- Quality: %s\n", prop.Quality)
 	fmt.Fprintf(&b, "- Year Built: %s\n", prop.YearBuilt)
 	landLine := strings.TrimSpace(fmt.Sprintf("%s acres / %s sqft", prop.LandAcres, prop.LandSqFt))
 	fmt.Fprintf(&b, "- Land: %s\n", landLine)
