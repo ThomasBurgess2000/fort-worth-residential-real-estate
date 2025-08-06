@@ -39,3 +39,5 @@ data/
 
 # Uncomment the following line **only** if you do NOT want to vendor deps
 # vendor/
+
+wallet/

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"acquisitions/internal/types"
 	"bufio"
 	"bytes"
 	"fmt"
@@ -63,7 +64,7 @@ func loadLeads() ([]string, error) {
 // saveLead appends the property address to the Unscreened list (without adding
 // duplicates) and creates a markdown file for the property using the fields
 // available in the Property struct.
-func saveLead(prop Property) error {
+func saveLead(prop types.Property) error {
 	address := strings.TrimSpace(prop.SitusAddress)
 	if address == "" {
 		return fmt.Errorf("property has empty address – cannot save lead")
@@ -145,7 +146,7 @@ func saveLead(prop Property) error {
 }
 
 // createLeadDetailFile writes the detailed markdown file for the property unless it already exists.
-func createLeadDetailFile(prop Property) error {
+func createLeadDetailFile(prop types.Property) error {
 	if err := os.MkdirAll(leadsDetailsDir, 0755); err != nil {
 		return err
 	}
@@ -234,7 +235,7 @@ func sanitizeFileName(name string) string {
 
 // buildOwnerAddress concatenates the owner address fields, gracefully handling
 // missing pieces so we don't end up with awkward stray commas or spaces.
-func buildOwnerAddress(p Property) string {
+func buildOwnerAddress(p types.Property) string {
 	parts := []string{}
 	if p.OwnerAddress != "" {
 		parts = append(parts, strings.TrimSpace(p.OwnerAddress))
@@ -250,7 +251,7 @@ func buildOwnerAddress(p Property) string {
 
 // showLeads loads the saved leads and presents them in an interactive list similar to
 // search results. The user can select a lead to view full property details.
-func showLeads(props2025, props2024 map[string]Property) {
+func showLeads() {
 	addresses, err := loadLeads()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to load leads: %v\n", err)
@@ -265,16 +266,19 @@ func showLeads(props2025, props2024 map[string]Property) {
 	for _, addr := range addresses {
 		norm := normalize(addr)
 		owner := ""
-		if p, ok := props2025[norm]; ok {
-			owner = p.OwnerName
-		} else if p, ok := props2024[norm]; ok {
-			owner = p.OwnerName
+		
+		// Query database for property details
+		if prop, err := db.QueryPropertyByAddress(norm); err == nil && prop != nil {
+			owner = prop.OwnerName
+		} else if prop, err := db.QueryPropertyByAddress2024(norm); err == nil && prop != nil {
+			owner = prop.OwnerName
 		}
+		
 		line := fmt.Sprintf("%-40s | %s", addr, owner)
 		lines = append(lines, line)
 		fmt.Println(line)
 	}
 
 	fmt.Println("Use ↑/↓ and Enter for details, Esc to exit.")
-	interactiveSelect(addresses, lines, props2025, props2024, false)
+	interactiveSelect(addresses, lines, false)
 }
