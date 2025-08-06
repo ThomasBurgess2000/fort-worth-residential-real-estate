@@ -1,6 +1,7 @@
 package main
 
 import (
+	"acquisitions/internal/types"
 	"bufio"
 	"fmt"
 	"os"
@@ -12,7 +13,7 @@ import (
 // ---------------- Distressed-property filter ----------------
 
 type distressedResult struct {
-	Property
+	types.Property
 	PriceRatio float64
 	AgeGap     float64
 	DeprGap    float64
@@ -21,7 +22,7 @@ type distressedResult struct {
 }
 
 // handleSubdivisionQuery prompts the user to choose an analysis method and displays results.
-func handleSubdivisionQuery(sub string, props2025 map[string]Property, props2024 map[string]Property) {
+func handleSubdivisionQuery(sub string) {
 	reader := bufio.NewReader(os.Stdin)
 	for {
 		fmt.Printf("\nSelect analysis for subdivision %s:\n  1) Relative Improvement (price per sqft vs nearby)\n  2) Distressed-Property Filter\n  3) List \"Poor\" Condition Properties\nChoice (1/2/3, default 1): ", sub)
@@ -29,7 +30,15 @@ func handleSubdivisionQuery(sub string, props2025 map[string]Property, props2024
 		choice = strings.TrimSpace(choice)
 		if choice == "" || choice == "1" {
 			startSub := time.Now()
-			results := findUndervaluedInSubdivision(sub, props2025)
+
+			// Query database for subdivision properties
+			properties, err := db.QuerySubdivisionProperties(sub)
+			if err != nil {
+				fmt.Printf("Error querying subdivision properties: %v\n", err)
+				return
+			}
+
+			results := findUndervaluedInSubdivision(sub, properties)
 			fmt.Printf("\nFound %d undervalued properties in subdivision %s (%v)\n", len(results), sub, time.Since(startSub).Truncate(time.Millisecond))
 			var lines []string
 			var addrs []string
@@ -41,12 +50,20 @@ func handleSubdivisionQuery(sub string, props2025 map[string]Property, props2024
 				fmt.Println(line)
 			}
 			fmt.Println("Use ↑/↓ and Enter for details, Esc to exit.")
-			interactiveSelect(addrs, lines, props2025, props2024, true)
+			interactiveSelect(addrs, lines, true)
 			return
 		}
 		if choice == "2" {
 			startSub := time.Now()
-			results := findDistressedInSubdivision(sub, props2025, props2024)
+
+			// Query database for subdivision properties
+			properties, err := db.QuerySubdivisionProperties(sub)
+			if err != nil {
+				fmt.Printf("Error querying subdivision properties: %v\n", err)
+				return
+			}
+
+			results := findDistressedInSubdivision(sub, properties)
 			fmt.Printf("\nFound %d distressed properties in subdivision %s (%v)\n", len(results), sub, time.Since(startSub).Truncate(time.Millisecond))
 			// Display and enable interactive selection.
 			var lines []string
@@ -61,12 +78,20 @@ func handleSubdivisionQuery(sub string, props2025 map[string]Property, props2024
 				fmt.Println(line)
 			}
 			fmt.Println("Use ↑/↓ and Enter for details, Esc to exit.")
-			interactiveSelect(addrs, lines, props2025, props2024, true)
+			interactiveSelect(addrs, lines, true)
 			return
 		}
 		if choice == "3" {
 			startSub := time.Now()
-			results := findPoorConditionInSubdivision(sub, props2025)
+
+			// Query database for subdivision properties
+			properties, err := db.QuerySubdivisionProperties(sub)
+			if err != nil {
+				fmt.Printf("Error querying subdivision properties: %v\n", err)
+				return
+			}
+
+			results := findPoorConditionInSubdivision(sub, properties)
 			fmt.Printf("\nFound %d 'Poor' condition properties in subdivision %s (%v)\n", len(results), sub, time.Since(startSub).Truncate(time.Millisecond))
 			var lines []string
 			var addrs []string
@@ -77,7 +102,7 @@ func handleSubdivisionQuery(sub string, props2025 map[string]Property, props2024
 				fmt.Println(line)
 			}
 			fmt.Println("Use ↑/↓ and Enter for details, Esc to exit.")
-			interactiveSelect(addrs, lines, props2025, props2024, true)
+			interactiveSelect(addrs, lines, true)
 			return
 		}
 		fmt.Println("Invalid choice – enter 1, 2, or 3.")
@@ -85,7 +110,7 @@ func handleSubdivisionQuery(sub string, props2025 map[string]Property, props2024
 }
 
 // findDistressedInSubdivision implements the SQL-like distressed-property filter for a single subdivision.
-func findDistressedInSubdivision(sub string, props2025 map[string]Property, props2024 map[string]Property) []distressedResult {
+func findDistressedInSubdivision(sub string, props []types.Property) []distressedResult {
 	sub = strings.ToUpper(strings.TrimSpace(sub))
 
 	// 1. Build neighborhood benchmarks
@@ -97,7 +122,7 @@ func findDistressedInSubdivision(sub string, props2025 map[string]Property, prop
 	}
 	aggs := make(map[string]*agg)
 
-	for _, p := range props2025 {
+	for _, p := range props {
 		nb := strings.ToUpper(strings.TrimSpace(p.Subdivision))
 		if nb == "" {
 			continue
@@ -144,7 +169,7 @@ func findDistressedInSubdivision(sub string, props2025 map[string]Property, prop
 	var results []distressedResult
 	now := time.Now()
 
-	for _, p := range props2025 {
+	for _, p := range props {
 		nb := strings.ToUpper(strings.TrimSpace(p.Subdivision))
 		if nb != sub {
 			continue
@@ -194,7 +219,8 @@ func findDistressedInSubdivision(sub string, props2025 map[string]Property, prop
 			flagTaxProtest = 1
 		}
 		flagTaxShock := 0
-		if prev, ok := props2024[normalize(p.SitusAddress)]; ok {
+		// Query 2024 data for comparison
+		if prev, err := db.QueryPropertyByAddress2024(normalize(p.SitusAddress)); err == nil && prev != nil {
 			if prevVal, ok := parseDollar(prev.TotalValue); ok && prevVal > 0 && total > 1.15*prevVal {
 				flagTaxShock = 1
 			}

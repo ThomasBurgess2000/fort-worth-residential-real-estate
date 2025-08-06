@@ -5,64 +5,16 @@ import (
 	"fmt"
 	"math"
 	"os"
-	"path/filepath"
-	"runtime"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
+
+	"acquisitions/internal/database"
+	"acquisitions/internal/types"
 )
 
-// Property holds combined data from the primary and supplemental datasets.
-// We keep only a subset of interesting fields; add more as needed.
-type Property struct {
-	AccountNum     string
-	SitusAddress   string
-	OwnerName      string
-	OwnerAddress   string
-	OwnerCityState string
-	OwnerZip       string
-	Subdivision    string
-
-	LastSaleDate        string
-	Condition           string
-	DepreciationPercent string
-	Quality             string
-
-	TotalValue       string
-	ImprovementValue string
-	LandValue        string
-
-	YearBuilt    string
-	LivingArea   string
-	NumBedrooms  string
-	NumBathrooms string
-
-	SiteClassDescr string
-	PropertyClass  string
-	StateUseCode   string
-	LandAcres      string
-	LandSqFt       string
-	SiteClassCd    string
-	LandUseCode    string
-
-	County         string
-	City           string
-	SchoolDistrict string
-
-	DeedDate     string
-	ARBIndicator string
-
-	Latitude  string
-	Longitude string
-}
-
-// Dataset paths. Adjust if your directory layout changes.
-var (
-	primaryFile      = filepath.Join("data", "PropertyData_R_2025.txt")
-	supplementalFile = filepath.Join("data", "PropertyDataSupplemental_R_2025.txt")
-	primary2024File  = filepath.Join("data", "PropertyData_2024.txt")
-)
+// Global database instance
+var db *database.Database
 
 const (
 	colorRed   = "\033[31m"
@@ -77,32 +29,35 @@ func main() {
 	if err := initZoning(); err != nil {
 		fmt.Fprintf(os.Stderr, "warning: %v\n", err)
 	}
-	datasetStart := time.Now()
 
-	// Load datasets
-	props2025, props2024, err := loadDatasets()
+	// Initialize database connection
+	dbConfig := database.LoadDatabaseConfig()
+	var err error
+	db, err = database.NewDatabase(dbConfig)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to load datasets: %v\n", err)
+		fmt.Fprintf(os.Stderr, "failed to connect to database: %v\n", err)
 		os.Exit(1)
 	}
-	fmt.Printf("Datasets loaded in %v (%d records)\n", time.Since(datasetStart).Truncate(time.Millisecond), len(props2025))
+	defer db.Close()
+
+	fmt.Println("Connected to Oracle Autonomous Database")
 
 	// If the user provided an argument on the command line, decide whether it's a zip or an address.
 	if len(os.Args) > 1 {
 		arg := os.Args[1]
 		// Special command: list large rural parcels (>10 acres & >10mi from downtown)
 		if strings.EqualFold(arg, "bigland") {
-			showLargeLandInteractive(props2025, props2024)
+			showLargeLandInteractive()
 			return
 		}
 		if strings.HasPrefix(arg, "sub=") || strings.HasPrefix(arg, "sub:") {
 			sub := strings.TrimPrefix(strings.TrimPrefix(arg, "sub="), "sub:")
-			handleSubdivisionQuery(sub, props2025, props2024)
+			handleSubdivisionQuery(sub)
 			return
 		}
 		// Otherwise treat the argument(s) as an address lookup.
 		address := strings.Join(os.Args[1:], " ")
-		lookupAndRender(address, props2025, props2024, true)
+		lookupAndRender(address, true)
 		return
 	}
 
@@ -117,47 +72,59 @@ func main() {
 		}
 		// Special command: show leads list
 		if strings.EqualFold(addrInput, "leads") {
-			showLeads(props2025, props2024)
+			showLeads()
 			continue
 		}
 		// Special command: list large rural parcels (>10 acres & >10mi from downtown)
 		if strings.EqualFold(addrInput, "bigland") {
-			showLargeLandInteractive(props2025, props2024)
+			showLargeLandInteractive()
 			continue
 		}
 
 		// Subdivision query
 		if strings.HasPrefix(addrInput, "sub=") || strings.HasPrefix(addrInput, "sub:") {
 			sub := strings.TrimPrefix(strings.TrimPrefix(addrInput, "sub="), "sub:")
-			handleSubdivisionQuery(sub, props2025, props2024)
+			handleSubdivisionQuery(sub)
 			continue
 		}
 
 		// Default: treat input as an address search
-		lookupAndRender(addrInput, props2025, props2024, true)
+		lookupAndRender(addrInput, true)
 	}
 }
 
-// lookupAndRender searches the 2025 and 2024 maps for the given address and displays the result.
-func lookupAndRender(address string, props2025 map[string]Property, props2024 map[string]Property, askSave bool) {
+// lookupAndRender searches the database for the given address and displays the result.
+func lookupAndRender(address string, askSave bool) {
 	norm := normalize(address)
-	prop2025, ok2025 := props2025[norm]
-	prop2024, ok2024 := props2024[norm]
+
+	// Query 2025 data first
+	prop2025, err := db.QueryPropertyByAddress(norm)
+	if err != nil {
+		fmt.Printf("Error querying 2025 data: %v\n", err)
+		return
+	}
+
+	// Query 2024 data
+	prop2024, err := db.QueryPropertyByAddress2024(norm)
+	if err != nil {
+		fmt.Printf("Error querying 2024 data: %v\n", err)
+		return
+	}
 
 	// selProp points to the Property we ultimately displayed (2025 preferred, else 2024).
-	var selProp *Property
+	var selProp *types.Property
 
-	if ok2025 {
-		selProp = &prop2025
-		if ok2024 {
-			renderPropertyDiff(prop2025, prop2024)
+	if prop2025 != nil {
+		selProp = prop2025
+		if prop2024 != nil {
+			renderPropertyDiff(*prop2025, *prop2024)
 		} else {
-			renderPropertyDiff(prop2025, Property{})
+			renderPropertyDiff(*prop2025, types.Property{})
 		}
-	} else if ok2024 {
-		selProp = &prop2024
+	} else if prop2024 != nil {
+		selProp = prop2024
 		fmt.Println("[Note] No 2025 record found; displaying 2024 data")
-		renderPropertyDiff(prop2024, Property{})
+		renderPropertyDiff(*prop2024, types.Property{})
 	} else {
 		fmt.Printf("No property found for address: %s\n", address)
 		return
@@ -179,177 +146,6 @@ func lookupAndRender(address string, props2025 map[string]Property, props2024 ma
 	}
 }
 
-// loadDatasets reads both data files, merges them by Account Number, and returns a map keyed by normalized address.
-func loadDatasets() (map[string]Property, map[string]Property, error) {
-	// First read primary file into map keyed by account number.
-	primaryByAcct := make(map[string]Property)
-	var muPrimary sync.Mutex
-	if err := readFile(primaryFile, func(record map[string]string) {
-		acct := record["Account_Num"]
-		prop := Property{
-			AccountNum:       acct,
-			SitusAddress:     record["Situs_Address"],
-			OwnerName:        record["Owner_Name"],
-			OwnerAddress:     record["Owner_Address"],
-			OwnerCityState:   record["Owner_CityState"],
-			OwnerZip:         record["Owner_Zip"],
-			Subdivision:      record["SubdivisionName"],
-			County:           record["County"],
-			City:             record["City"],
-			SchoolDistrict:   record["School"],
-			LandValue:        record["Land_Value"],
-			ImprovementValue: record["Improvement_Value"],
-			TotalValue:       record["Total_Value"],
-
-			DeedDate:     record["Deed_Date"],
-			ARBIndicator: record["ARB_Indicator"],
-
-			YearBuilt:    record["Year_Built"],
-			LivingArea:   record["Living_Area"],
-			NumBedrooms:  record["Num_Bedrooms"],
-			NumBathrooms: record["Num_Bathrooms"],
-
-			PropertyClass: record["Property_Class"],
-			StateUseCode:  record["State_Use_Code"],
-
-			LandAcres: record["Land_Acres"],
-			LandSqFt:  record["Land_SqFt"],
-		}
-		muPrimary.Lock()
-		primaryByAcct[acct] = prop
-		muPrimary.Unlock()
-	}); err != nil {
-		return nil, nil, err
-	}
-
-	// Now read supplemental file and merge.
-	if err := readFile(supplementalFile, func(record map[string]string) {
-		acct := record["AccountNumber"]
-		muPrimary.Lock()
-		prop, ok := primaryByAcct[acct]
-		if !ok {
-			muPrimary.Unlock()
-			// Only merge if we already have the base record.
-			return
-		}
-		prop.Latitude = record["Latitude"]
-		prop.Longitude = record["Longitude"]
-		prop.Quality = record["Quality"]
-
-		prop.LastSaleDate = record["LastSaleDate"]
-		prop.Condition = record["Condition"]
-		prop.DepreciationPercent = record["DepreciationPercent"]
-
-		prop.Subdivision = record["SubdivisionName"]
-		prop.SiteClassCd = record["SiteClassCd"]
-		prop.SiteClassDescr = record["SiteClassDescr"]
-		prop.LandUseCode = record["LandUseCode"]
-		primaryByAcct[acct] = prop
-		muPrimary.Unlock()
-	}); err != nil {
-		return nil, nil, err
-	}
-
-	// Build address map.
-	byAddress := make(map[string]Property, len(primaryByAcct))
-	for _, prop := range primaryByAcct {
-		addrNorm := normalize(prop.SitusAddress)
-		byAddress[addrNorm] = prop
-	}
-	// Now load 2024 primary dataset and build address map.
-	primary2024ByAcct := make(map[string]Property)
-	var mu2024 sync.Mutex
-	if err := readFile(primary2024File, func(record map[string]string) {
-		acct := record["Account_Num"]
-		prop := Property{
-			AccountNum:       acct,
-			SitusAddress:     record["Situs_Address"],
-			OwnerName:        record["Owner_Name"],
-			OwnerAddress:     record["Owner_Address"],
-			OwnerCityState:   record["Owner_CityState"],
-			OwnerZip:         record["Owner_Zip"],
-			Subdivision:      record["SubdivisionName"],
-			County:           record["County"],
-			City:             record["City"],
-			SchoolDistrict:   record["School"],
-			LandValue:        record["Land_Value"],
-			ImprovementValue: record["Improvement_Value"],
-			TotalValue:       record["Total_Value"],
-			DeedDate:         record["Deed_Date"],
-			ARBIndicator:     record["ARB_Indicator"],
-			YearBuilt:        record["Year_Built"],
-			LivingArea:       record["Living_Area"],
-			NumBedrooms:      record["Num_Bedrooms"],
-			NumBathrooms:     record["Num_Bathrooms"],
-			PropertyClass:    record["Property_Class"],
-			StateUseCode:     record["State_Use_Code"],
-			LandAcres:        record["Land_Acres"],
-			LandSqFt:         record["Land_SqFt"],
-		}
-		mu2024.Lock()
-		primary2024ByAcct[acct] = prop
-		mu2024.Unlock()
-	}); err != nil {
-		return nil, nil, err
-	}
-
-	byAddress2024 := make(map[string]Property, len(primary2024ByAcct))
-	for _, prop := range primary2024ByAcct {
-		addrNorm := normalize(prop.SitusAddress)
-		byAddress2024[addrNorm] = prop
-	}
-
-	return byAddress, byAddress2024, nil
-}
-
-// readFile iterates through a |-delimited file with a header row, calling fn for each record.
-func readFile(path string, fn func(record map[string]string)) error {
-	f, err := os.Open(path)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-
-	scanner := bufio.NewScanner(f)
-	scanner.Buffer(make([]byte, 0, 1024*1024), 1024*1024) // allow very long lines
-
-	// Read header row
-	if !scanner.Scan() {
-		return fmt.Errorf("file %s is empty", path)
-	}
-	header := strings.Split(scanner.Text(), "|")
-
-	// Pipeline: producer (I/O) -> workers (CPU-bound parsing)
-	linesCh := make(chan string, 4096)
-
-	workers := runtime.NumCPU()
-	var wg sync.WaitGroup
-	wg.Add(workers)
-	for i := 0; i < workers; i++ {
-		go func() {
-			defer wg.Done()
-			for line := range linesCh {
-				cols := strings.Split(line, "|")
-				rec := make(map[string]string, len(header))
-				for j, h := range header {
-					if j < len(cols) {
-						rec[h] = strings.TrimSpace(cols[j])
-					}
-				}
-				fn(rec)
-			}
-		}()
-	}
-
-	for scanner.Scan() {
-		linesCh <- scanner.Text()
-	}
-	close(linesCh)
-	wg.Wait()
-
-	return scanner.Err()
-}
-
 // normalize produces a canonical form of an address key.
 func normalize(addr string) string {
 	addr = strings.ToUpper(strings.TrimSpace(addr))
@@ -359,7 +155,7 @@ func normalize(addr string) string {
 }
 
 // renderProperty prints the property information in a pleasant, readable layout.
-func renderPropertyDiff(cur Property, prev Property) {
+func renderPropertyDiff(cur types.Property, prev types.Property) {
 	diff := func(a, b string) string {
 		if b != "" && a != b {
 			return fmt.Sprintf(" %s[%s]%s", colorRed, b, colorReset)
@@ -430,7 +226,7 @@ func renderPropertyDiff(cur Property, prev Property) {
 // ---------------- Subdivision undervaluation analysis ----------------
 
 type undervaluedResult struct {
-	Property
+	types.Property
 	NeighborCount int
 	Mean          float64
 	StdDev        float64
@@ -438,10 +234,10 @@ type undervaluedResult struct {
 
 // findUndervaluedInSubdivision returns properties in the given subdivision whose ImprovementValue
 // is at least one standard deviation below neighboring comps (0.25 mi).
-func findUndervaluedInSubdivision(sub string, props map[string]Property) []undervaluedResult {
+func findUndervaluedInSubdivision(sub string, props []types.Property) []undervaluedResult {
 	sub = strings.ToUpper(strings.TrimSpace(sub))
 	// Collect candidates in subdivision with coords & value.
-	var candidates []Property
+	var candidates []types.Property
 	for _, p := range props {
 		if strings.ToUpper(strings.TrimSpace(p.Subdivision)) == sub && p.Latitude != "" && p.Longitude != "" && p.ImprovementValue != "" {
 			candidates = append(candidates, p)
@@ -452,7 +248,7 @@ func findUndervaluedInSubdivision(sub string, props map[string]Property) []under
 
 // undervaluedFromCandidates runs the spatial+stat comparison for a set of candidate
 // properties and returns those that are at least one standard deviation under the mean.
-func undervaluedFromCandidates(candidates []Property, universe map[string]Property) []undervaluedResult {
+func undervaluedFromCandidates(candidates []types.Property, universe []types.Property) []undervaluedResult {
 	var results []undervaluedResult
 	for _, p := range candidates {
 		lat1, lon1, ok := parseLatLon(p.Latitude, p.Longitude)

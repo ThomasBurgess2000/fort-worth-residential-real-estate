@@ -11,7 +11,7 @@ import (
 
 // interactiveSelect lets user move through the provided lines with arrow keys and press Enter to
 // view full property details. It expects len(addresses)==len(lines).
-func interactiveSelect(addresses []string, lines []string, props2025, props2024 map[string]Property, askSave bool) {
+func interactiveSelect(addresses []string, lines []string, askSave bool) {
 	if len(addresses) == 0 {
 		return
 	}
@@ -69,7 +69,7 @@ func interactiveSelect(addresses []string, lines []string, props2025, props2024 
 			case 13: // Enter
 				term.Restore(fd, oldState)
 				fmt.Println()
-				lookupAndRender(addresses[selected], props2025, props2024, askSave)
+				lookupAndRender(addresses[selected], askSave)
 
 				// Wait for user acknowledgement before returning to list
 				fmt.Print("\n(press Enter to return)")
@@ -116,7 +116,7 @@ func interactiveSelect(addresses []string, lines []string, props2025, props2024 
 		case '\r', '\n': // Enter
 			term.Restore(fd, oldState) // restore cooked mode before rendering details
 			fmt.Println()
-			lookupAndRender(addresses[selected], props2025, props2024, askSave)
+			lookupAndRender(addresses[selected], askSave)
 
 			// Wait for user acknowledgement before returning to list
 			fmt.Print("\n(press Enter to return)")

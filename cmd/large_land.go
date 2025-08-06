@@ -1,6 +1,7 @@
 package main
 
 import (
+	"acquisitions/internal/types"
 	"bufio"
 	"fmt"
 	"os"
@@ -16,14 +17,14 @@ import (
 
 // largeLandResult holds the parcel along with parsed acreage and distance from the reference point.
 type largeLandResult struct {
-	Property
+	types.Property
 	Acres    float64
 	Distance float64
 }
 
 // findLargeLandFar returns properties that have at least minAcres of land and are located more than
 // minMiles away from the provided reference latitude/longitude.
-func findLargeLandFar(props map[string]Property, minAcres float64, maxAcres float64, refLat, refLon, minMiles float64) []largeLandResult {
+func findLargeLandFar(props []types.Property, minAcres float64, maxAcres float64, refLat, refLon, minMiles float64) []largeLandResult {
 	var results []largeLandResult
 
 	for _, p := range props {
@@ -65,7 +66,7 @@ func findLargeLandFar(props map[string]Property, minAcres float64, maxAcres floa
 
 // showLargeLandInteractive finds and lists qualifying properties, allowing the user to select one
 // for detailed viewing via an interactive list where ←/→ switch pages.
-func showLargeLandInteractive(props2025, props2024 map[string]Property) {
+func showLargeLandInteractive() {
 	const (
 		minAcres         = 10.0
 		maxAcres         = 200.0
@@ -74,18 +75,25 @@ func showLargeLandInteractive(props2025, props2024 map[string]Property) {
 		minMiles         = 10.0
 	)
 
-	results := findLargeLandFar(props2025, minAcres, maxAcres, refLat, refLon, minMiles)
+	// Query database for large land properties
+	properties, err := db.QueryLargeLandProperties()
+	if err != nil {
+		fmt.Printf("Error querying large land properties: %v\n", err)
+		return
+	}
+
+	results := findLargeLandFar(properties, minAcres, maxAcres, refLat, refLon, minMiles)
 	fmt.Printf("\nFound %d properties with >%.0f acres located more than %.0f miles from (%.6f, %.6f)\n", len(results), minAcres, minMiles, refLat, refLon)
 	if len(results) == 0 {
 		return
 	}
 
-	interactiveLargeLand(results, props2025, props2024)
+	interactiveLargeLand(results)
 }
 
 // interactiveLargeLand presents a paginated list (20 per page) of large-land results.
 // ↑/↓ navigate within a page, ←/→ change pages, Enter shows details, Esc exits.
-func interactiveLargeLand(results []largeLandResult, props2025, props2024 map[string]Property) {
+func interactiveLargeLand(results []largeLandResult) {
 	const pageSize = 20
 
 	if len(results) == 0 {
@@ -219,7 +227,7 @@ func interactiveLargeLand(results []largeLandResult, props2025, props2024 map[st
 			if idx < len(results) {
 				term.Restore(fd, oldState)
 				fmt.Println()
-				lookupAndRender(results[idx].SitusAddress, props2025, props2024, true)
+				lookupAndRender(results[idx].SitusAddress, true)
 
 				fmt.Print("\n(press Enter to return)")
 				_, _ = bufio.NewReader(os.Stdin).ReadBytes('\n')
