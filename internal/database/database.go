@@ -121,7 +121,7 @@ func (d *Database) Close() error {
 func (d *Database) QueryPropertyByAddress(normalizedAddress string) (*types.Property, error) {
 	query := `
 		SELECT 
-			P.Account_Num, P.Situs_Address, P.Owner_Name, P.Owner_Address, P.Owner_CityState, P.Owner_Zip,
+			P.Account_Num, NVL(P.Situs_Address, ' ') Situs_Address, P.Owner_Name, P.Owner_Address, P.Owner_CityState, P.Owner_Zip,
 			NVL(S.SubdivisionName, ' ') SubdivisionName, P.County, P.City, P.School, P.Land_Value, P.Improvement_Value, P.Total_Value,
 			NVL(TO_CHAR(P.Deed_Date, 'YYYY-MM-DD'), ' ') Deed_Date, NVL(P.ARB_Indicator, ' ') ARB_Indicator, P.Year_Built, P.Living_Area, P.Num_Bedrooms, P.Num_Bathrooms,
 			P.Property_Class, P.State_Use_Code, P.Land_Acres, P.Land_SqFt,
@@ -129,7 +129,7 @@ func (d *Database) QueryPropertyByAddress(normalizedAddress string) (*types.Prop
 			NVL(S.Quality, ' ') Quality, NVL(TO_CHAR(S.LastSaleDate, 'YYYY-MM-DD'), ' ') LastSaleDate, NVL(S.Condition, ' ') Condition, NVL(S.DepreciationPercent, ' ') DepreciationPercent, NVL(S.SiteClassCd, ' ') SiteClassCd, NVL(S.SiteClassDescr, ' ') SiteClassDescr, NVL(S.LandUseCode, ' ') LandUseCode
 		FROM PROPERTYDATA_R_2025 P
 		LEFT JOIN PROPERTYDATASUPPLEMENTAL_R_2025 S ON P.Account_Num = S.AccountNumber
-		WHERE UPPER(REPLACE(REPLACE(P.Situs_Address, ',', ''), '  ', ' ')) = :1
+		WHERE UPPER(REPLACE(REPLACE(NVL(P.Situs_Address, ' '), ',', ''), '  ', ' ')) = :1
 	`
 
 	var prop types.Property
@@ -185,7 +185,7 @@ func (d *Database) QueryPropertyByAddress2024(normalizedAddress string) (*types.
 func (d *Database) QuerySubdivisionProperties(subdivision string) ([]types.Property, error) {
 	query := `
 		SELECT 
-			P.Account_Num, P.Situs_Address, P.Owner_Name, P.Owner_Address, P.Owner_CityState, P.Owner_Zip,
+			P.Account_Num, NVL(P.Situs_Address, ' ') Situs_Address, P.Owner_Name, P.Owner_Address, P.Owner_CityState, P.Owner_Zip,
 			NVL(S.SubdivisionName, ' ') SubdivisionName, P.County, P.City, P.School, P.Land_Value, P.Improvement_Value, P.Total_Value,
 			NVL(TO_CHAR(P.Deed_Date, 'YYYY-MM-DD'), ' ') Deed_Date, NVL(P.ARB_Indicator, ' ') ARB_Indicator, P.Year_Built, P.Living_Area, P.Num_Bedrooms, P.Num_Bathrooms,
 			P.Property_Class, P.State_Use_Code, P.Land_Acres, P.Land_SqFt,
@@ -225,7 +225,7 @@ func (d *Database) QuerySubdivisionProperties(subdivision string) ([]types.Prope
 func (d *Database) QueryLargeLandProperties() ([]types.Property, error) {
 	query := `
 		SELECT 
-			P.Account_Num, P.Situs_Address, P.Owner_Name, P.Owner_Address, P.Owner_CityState, P.Owner_Zip,
+			P.Account_Num, NVL(P.Situs_Address, ' ') Situs_Address, P.Owner_Name, P.Owner_Address, P.Owner_CityState, P.Owner_Zip,
 			NVL(S.SubdivisionName, ' ') SubdivisionName, P.County, P.City, P.School, P.Land_Value, P.Improvement_Value, P.Total_Value,
 			NVL(TO_CHAR(P.Deed_Date, 'YYYY-MM-DD'), ' ') Deed_Date, NVL(P.ARB_Indicator, ' ') ARB_Indicator, P.Year_Built, P.Living_Area, P.Num_Bedrooms, P.Num_Bathrooms,
 			P.Property_Class, P.State_Use_Code, P.Land_Acres, P.Land_SqFt,
